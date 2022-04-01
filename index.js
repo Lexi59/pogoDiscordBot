@@ -1,6 +1,8 @@
 const { Client, Intents, MessageEmbed, MessageFlags  } = require('discord.js');
 const axios = require('axios');
 require('dotenv').config({ path: '.env' })
+const puppeteer = require('puppeteer');
+
 const client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_MESSAGE_REACTIONS] });
 client.login(process.env.BOT_TOKEN);
 
@@ -19,10 +21,73 @@ function readyDiscord(){
     console.log("Bot is ready");
 }
 
-function gotMessage(msg){
+async function gotMessage(msg){
     if(msg.channel.id == process.env.CHANNEL_ID && msg.content.trim().indexOf('!') == 0){
 
-        if(msg.content.includes('!leg')){
+        if(msg.content.includes('!pvp ')){
+            if(msg.content.split(' ').length >= 2){
+                var mon = msg.content.split(' ')[1].trim();
+                mon = mon.replace(/-/g, '_');
+                mon = mon.replace(/\'/g, '');
+                var league;
+                if(msg.content.split(' ')[2]){
+                    league = msg.content.split(' ')[2].trim().toLowerCase();
+                }
+                else{
+                    league = 'all';
+                }
+                var cp = 'All';
+                
+                (async function scrape() {
+                    const browser = await puppeteer.launch({ headless: false });
+                    const page = await browser.newPage();
+                    await page.goto('https://pvpivs.com/searchStr.html');
+
+                    if(league == 'little'){cp = '500'}
+                    else if (league == 'great'){cp = '1500'}
+                    else if (league == 'ultra'){cp = '2500'}
+                    else if (league == 'master'){cp = 'false'}
+                    else if (league == 'all'){cp = 'All'}
+
+                    await page.waitForSelector('#league');
+                    await page.select('#league', cp);
+
+                    page.waitForSelector('#pokeList');
+                    await page.focus('#pokeList')
+                    await page.keyboard.type(mon);
+
+                    await page.waitForSelector('#awesomplete_list_1');
+
+                    try{
+                        await page.waitForSelector('#awesomplete_list_1_item_0',{timeout: 750});
+                    }
+                    catch(e){
+                        msg.channel.send('Pokemon ' + mon + ' does not exist. If there is a space in the name, replace it with _');
+                        await browser.close();
+                        return;
+                    }
+                
+                    await page.click('#awesomplete_list_1_item_0');
+                    await page.waitForSelector('#output');
+                    let element = await page.$('#output')
+                    let value = await page.evaluate(el => el.value, element)
+                    value = value.replace(/\*/g, '\\*');
+                    let summary = await page.$('#outputSummaryBox')
+                    let text = await page.evaluate(el => el.textContent, summary)
+                    
+                    const exampleEmbed = new MessageEmbed()
+                        .setColor('#A90A15')
+                        .setTitle(text)
+                        .setURL(page.url())
+                        .setDescription(value)
+                        .setTimestamp()
+    
+                    msg.channel.send({ embeds: [exampleEmbed] });
+                    await browser.close();
+                })();
+            }
+        }
+        else if(msg.content.includes('!leg')){
             axios.get('https://pogoapi.net/api/v1/raid_bosses.json', {})
             .then(function(response) {
                 var boss = response.data.current['5'][0];
@@ -303,7 +368,21 @@ function gotMessage(msg){
             }
         }
         else if(msg.content.includes('!help')){
-            msg.channel.send('**Raid Boss Commands**\n*!leg*\t will show information about current legendary pokemon\n*!mega*\t will show information about current mega pokemon\n*!raid <pokemon name>*\t will show information about that raid boss (past and present)\n\n**Raid Hour Commands:**\n*!setroute*\t will allow admin to set the route for raid hour\n*!next*\t will tell you which gym is next\n*!start*\t will display a message explaining which lobby started and which gym is next\n*!add <gym name>*\t will add that gym to the end of the route\n*!add <gym name> after <gym name>*\t will add a stop in the middle of a route\n*!viewroute*\t will show the current route, including an arrow for the next gym on the route\n*!skip*\t will skip the next gym on the route and go to the next one\n*!clearroute*\t will clear the whole route\n*!raidhour*\t will send messages that allow for people to RSVP for raid hour (this clears past route and attendees)\n*!raiders*\t will show information on who has signed up to attend raid hour\n*!done*\t will mark the user who sent the message as no longer participating in raid hour\n*!endroute after <gym name>*\t will end the route after the listed gym')
+            if(msg.content.split(' ').length >= 2){
+                var help = msg.content.replace('!help ','').trim().toLowerCase();
+                if(help == 'raidboss'){
+                    msg.channel.send('**Raid Boss Commands**\n*!leg*\t will show information about current legendary pokemon\n*!mega*\t will show information about current mega pokemon\n*!raid <pokemon name>*\t will show information about that raid boss (past and present)');
+                }
+                else if (help == 'raidhour'){
+                    msg.channel.send('**Raid Hour Commands:**\n*!raidhour*\t will send messages that allow for people to RSVP for raid hour (this clears past route and attendees)\n*!raiders*\t will show information on who has signed up to attend raid hour\n*!done*\t will mark the user who sent the message as no longer participating in raid hour\n**Route Commands**\n*!next*\t will tell you which gym is next\n*!viewroute*\t will show the current route, including an arrow for the next gym on the route\n**Admin Route Commands**\n*!setroute*\t will allow admin to set the route for raid hour\n*!start*\t will display a message explaining which lobby started and which gym is next\n*!add <gym name>*\t will add that gym to the end of the route\n*!add <gym name> after <gym name>*\t will add a stop in the middle of a route\n*!skip*\t will skip the next gym on the route and go to the next one\n*!clearroute*\t will clear the whole route\n*!endroute after <gym name>*\t will end the route after the listed gym')
+                }
+                else if (help == 'pvp'){
+                    msg.channel.send("**!pvp <pokemon_name> <league>**\nThis returns a search string for the top 10 PvP IVs. If you want more details or more than the top 10, click the title.\n\nIf the pokemon name has a space, please replace it with _\nShadow doesn't affect the search string, so ignore it.\nIf you want to look for alolan pokemon, search **<pokemon_name>_Alola**\nFor Galarian pokemon, search **<pokemon_name>_Galarian**\nFor Hisuian, type **<pokemon_name>_Hisuian**\nIf there are multiple forms, use an underscore (e.g. **Giratina_Origin, Deoxys_Speed, Mewtwo_A, Thundurus_Therian**, etc)\nIf the pokemon have different sizes, the options are: **Small, Average, Large, Super** (e.g. Pumpkaboo_Large)\n\nThe league options are: **little, great, ultra, master, all**\n\tLeaving the league off of the command, automatically **assumes all leagues.**")
+                }
+            }
+            else{
+                 msg.channel.send("If you want help with learning about raid bosses, send *!help raidboss*\nIf you want help with raid hour commands, send *!help raidhour*\nIf you want help with PvP IVs, send *!help pvp*");
+            }            
         }
         else{
             msg.channel.send("Sorry, I don't recognize that command! Type *!help* to see available commands");
