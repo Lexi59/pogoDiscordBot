@@ -39,7 +39,7 @@ async function gotMessage(msg){
                 var cp = 'All';
                 
                 (async function scrape() {
-                    const browser = await puppeteer.launch({ headless: false });
+                    const browser = await puppeteer.launch({ headless: true, args:["--no-sandbox"] });
                     const page = await browser.newPage();
                     await page.goto('https://pvpivs.com/searchStr.html');
 
